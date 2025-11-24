@@ -1,8 +1,8 @@
 class Spoofdpi < Formula
   desc "Simple and fast anti-censorship tool written in Go"
   homepage "https://github.com/xvzc/SpoofDPI"
-  url "https://github.com/xvzc/SpoofDPI/archive/refs/tags/v1.0.2.tar.gz"
-  sha256 "ce784f8d00ef139659df2388a37604bb50c4008c6c957e43f647c2837a9da9d1"
+  url "https://github.com/xvzc/SpoofDPI/archive/refs/tags/v1.1.1.tar.gz"
+  sha256 "28c11f40cebe4ecbc7f27a7909b37b8ce8955a116dbe98cd018664da1e41a76a"
   license "Apache-2.0"
   head "https://github.com/xvzc/SpoofDPI.git", branch: "main"
 
@@ -28,9 +28,22 @@ class Spoofdpi < Formula
   uses_from_macos "libpcap"
 
   def install
-    ENV["CGO_ENABLED"] = "1" if OS.linux? && Hardware::CPU.arm?
+    # Set CGO_ENABLED environment variable depending on the operating system
+    if OS.mac?
+      ENV["CGO_ENABLED"] = "1"
+    else
+      ENV["CGO_ENABLED"] = "0"
+    end
 
-    system "go", "build", *std_go_args(ldflags: "-s -w"), "./cmd/spoofdpi"
+    # Inject version and build metadata via ldflags
+    ldflags = %W[
+      -s -w
+      -X main.version=#{version}
+      -X main.commit=#{File.read("COMMIT")}
+      -X main.build=homebrew
+    ]
+
+    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/spoofdpi"
   end
 
   service do
@@ -42,13 +55,13 @@ class Spoofdpi < Formula
 
   test do
     port = free_port
-    pid = spawn bin/"spoofdpi", "-system-proxy=false", "-listen-port", port.to_s
+    pid = spawn bin/"spoofdpi", "--listen-port", port.to_s
     begin
-      sleep 3
+      sleep 5
       # "nothing" is an invalid option, but curl will process it
       # only after it succeeds at establishing a connection,
       # then it will close it, due to the option, and return exit code 49.
-      shell_output("curl -s --connect-timeout 1 --telnet-option nothing 'telnet://127.0.0.1:#{port}'", 49)
+      shell_output("curl -s --connect-timeout 2 --telnet-option nothing 'telnet://127.0.0.1:#{port}'", 49)
     ensure
       Process.kill("SIGTERM", pid)
     end
